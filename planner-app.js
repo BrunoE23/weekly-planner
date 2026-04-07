@@ -30,6 +30,8 @@ Infer structure in this order:
 2. task-to-task sequence inside each group
 3. task-to-event anchor matching against fixed calendar events
 
+When a larger task is naturally divisible into homogeneous chunks, prefer turning it into a short sequential chain rather than parallel sibling tasks. Example: review 8 papers -> review papers block 1, block 2, block 3, block 4. Keep the chunks in one project, default to linking them in order, and only leave them parallel if the user clearly says order does not matter.
+
 When a screenshot is present, read it first as the week's constraint map. Infer fixed calendar events, detect the current-time marker when possible, and identify likely deadline/anchor events before linking tasks to them.
 
 Ask only a minimal number of targeted clarification questions:
@@ -82,6 +84,8 @@ Infer structure in this order:
 Sequence means one task comes before another task.
 Anchor means one task or subtree must happen before a fixed event.
 Do not collapse those two ideas into one.
+
+When the user describes a larger task that is naturally divisible into homogeneous chunks, prefer turning it into a short sequential chain rather than a set of parallel sibling tasks. Example: review 8 papers -> review papers block 1, block 2, block 3, block 4. Keep the chunks in one project, default to linking them in order with dependencies, and do not leave them as parallel siblings unless the user clearly says the order does not matter. This helps the downstream planner surface only the first unfinished chunk as the next clear step.
 
 When a calendar screenshot is provided:
 - read the screenshot first as the week's constraint map
@@ -552,7 +556,10 @@ function setBoardView(view) {
       const parsed = JSON.parse(raw);
       const normalized = normalizeBundle(parsed);
       state.projects = normalized.projects;
-      state.tasks = normalized.tasks;
+      state.tasks = normalized.tasks.map((task) => {
+        const { anchorEventId, ...rest } = task;
+        return rest;
+      });
       state.calendarEvents = normalized.calendarEvents;
       state.weeklyContext = normalized.weeklyContext;
       state.settings.useSystemTime = !Boolean(normalized.weeklyContext.currentTime);
@@ -568,13 +575,17 @@ function setBoardView(view) {
         state.treeEditMode = false;
         state.unlinkEditMode = false;
         state.treeParentTaskId = "";
-        state.timeEditMode = false;
-        state.deadlineEditMode = false;
+          state.timeEditMode = false;
+          state.deadlineEditMode = false;
           state.optionalEditMode = false;
           state.addTaskMode = false;
           state.renameCategoryMode = false;
           state.deleteTaskMode = false;
-          state.taskAnchorOverrides = {};
+          state.taskAnchorOverrides = Object.fromEntries(
+            normalized.tasks
+              .filter((task) => task.anchorEventId)
+              .map((task) => [task.id, task.anchorEventId])
+          );
           state.importCollapsed = true;
     setStatus(`Imported ${state.tasks.length} tasks and ${state.calendarEvents.length} fixed events.`, "ok");
     buildAndRenderPlan();
@@ -603,18 +614,22 @@ function onBundleFileUpload(event) {
 
 function normalizeBundle(parsed) {
   if (!parsed || !Array.isArray(parsed.projects) || !Array.isArray(parsed.tasks)) throw new Error('Bundle needs "projects[]" and "tasks[]".');
-  const projects = parsed.projects.map((project, index) => ({ id: slugify(project.id || project.name || `project-${index + 1}`), name: String(project.name || project.id || `Project ${index + 1}`).trim() }));
+  const projects = parsed.projects.map((project, index) => ({
+    id: slugify(project.id || project.name || project.title || `project-${index + 1}`),
+    name: String(project.name || project.title || project.id || `Project ${index + 1}`).trim()
+  }));
   const projectIds = new Set(projects.map((project) => project.id));
   const tasks = parsed.tasks.map((task, index) => ({
     id: slugify(task.id || `task-${index + 1}`),
     title: String(task.title || task.name || `Task ${index + 1}`).trim(),
-    projectId: projectIds.has(task.projectId) ? task.projectId : (projects[0]?.id || ""),
+    projectId: projectIds.has(slugify(task.projectId || "")) ? slugify(task.projectId || "") : (projects[0]?.id || ""),
     estimateMin: normalizeEstimate(task.estimateMin),
     urgency: normalizeUrgency(task.urgency),
     actionable: task.actionable !== false,
     dependsOnIds: Array.isArray(task.dependsOnIds) ? task.dependsOnIds.map((id) => slugify(id)) : [],
     notes: String(task.notes || "").trim(),
     optional: task.optional === true || /optional/i.test(String(task.notes || "")),
+    anchorEventId: task.anchorEventId ? slugify(task.anchorEventId) : "",
     ...deriveCadence(task)
   }));
   const calendarEvents = Array.isArray(parsed.calendar_events) ? parsed.calendar_events.map((event, index) => normalizeCalendarEvent(event, index, projects)).filter(Boolean) : [];
@@ -646,7 +661,19 @@ function normalizeCalendarEvent(event, index, projectCollection = state.projects
   }
   const inferredTimeNote = !event.start && !event.end && event.time ? `Imported from compact time field: ${String(event.time).trim()}.` : "";
   const notes = [String(event.notes || "").trim(), inferredTimeNote].filter(Boolean).join(" ");
-  return { id: slugify(event.id || `event-${index + 1}`), title, day, start, end, projectId, fixed: event.fixed !== false, notes, confidence: event.confidence ?? null };
+  return {
+    id: slugify(event.id || `event-${index + 1}`),
+    title,
+    day,
+    start,
+    end,
+    projectId,
+    fixed: event.fixed !== false,
+    notes,
+    confidence: event.confidence ?? null,
+    actsAsDeadline: event.actsAsDeadline === true,
+    deadlineLabel: String(event.deadlineLabel || "").trim()
+  };
 }
 
 function parseLooseCalendarTime(value) {
@@ -1290,6 +1317,7 @@ function buildProjectAnchorDiagnostics(fixedEvents, assignedSegments, unschedule
       const forcedTaskIds = new Set(forcedTasks.map((task) => task.id));
       const inferredMatches = (projectTasksById.get(project.id) || [])
         .filter((task) => !forcedTaskIds.has(task.id))
+        .filter((task) => !taskAnchorOverrides[task.id])
         .map((task) => ({ task, score: scoreTaskAgainstAnchor(task, target) }))
         .filter(({ score }) => score >= 4)
         .sort((left, right) => right.score - left.score || left.task.title.localeCompare(right.task.title));
