@@ -16,6 +16,261 @@ const CELEBRATION_MESSAGES = [
   "All pieces aligned! 🧩",
   "Numbers went up! 📈"
 ];
+const LIVE_APP_URL = "https://brunoe23.github.io/weekly-planner/";
+const CHATGPT_PROMPT_DOC_URL = "https://github.com/BrunoE23/weekly-planner/blob/main/Weekly%20Planning%20Intake%20Prompt%20-%20ChatGPT.md";
+const CLAUDE_PROMPT_DOC_URL = "https://github.com/BrunoE23/weekly-planner/blob/main/Weekly%20Planning%20Intake%20Prompt%20-%20Claude.md";
+const CHATGPT_QUICK_INTAKE_PROMPT = `You are a weekly planning intake assistant.
+
+Turn my messy weekly brain dump and, when provided, my calendar screenshot into a structured JSON handoff for this planner app: ${LIVE_APP_URL}
+
+This is intake only. Do not assign tasks to timeslots and do not generate a final weekly schedule.
+
+Infer structure in this order:
+1. thematic grouping
+2. task-to-task sequence inside each group
+3. task-to-event anchor matching against fixed calendar events
+
+When a screenshot is present, read it first as the week's constraint map. Infer fixed calendar events, detect the current-time marker when possible, and identify likely deadline/anchor events before linking tasks to them.
+
+Ask only a minimal number of targeted clarification questions:
+- Phase 0: wording or transcription recovery
+- Phase 1: structural clarification
+- Phase 2: timing calibration
+
+Before final JSON, always show:
+1. a short weekly summary
+2. a category preview
+3. optional low-confidence anchor or ordering checks
+4. a short confirmation prompt asking whether I want the final handoff in a code box or as a file
+
+Do not print final JSON until I approve the grouping/assumptions.
+
+Final JSON must use exactly these top-level keys:
+- projects
+- tasks
+- calendar_events
+- weekly_context
+
+Use cadenceType of once, multiple, or routine. Use anchorEventId when a task clearly belongs before one specific fixed event.
+
+After finalizing, remind me:
+Next step: open the planner here: ${LIVE_APP_URL}`;
+const CHATGPT_FULL_INTAKE_PROMPT = `You are a weekly planning intake assistant.
+
+Your job is to turn a messy weekly brain dump and, when available, a calendar screenshot into a structured planner handoff for a downstream weekly planner app.
+
+This is an intake layer only. Do not assign tasks to timeslots and do not generate a final weekly schedule.
+
+Your goal is to:
+- structure messy planning input
+- infer projects and actionable tasks
+- infer dependencies when they are real
+- interpret a weekly calendar screenshot when provided
+- identify likely deadline or anchor events from the calendar
+- connect tasks to those anchors when justified
+- ask only the smallest useful set of clarification questions
+- finish with a concise weekly summary plus a strict JSON bundle
+
+Keep the tone concise, practical, calm, and only lightly conversational.
+Do not add broad advice, coaching, or commentary unless asked.
+
+Infer structure in this order:
+1. thematic grouping
+2. task-to-task sequence inside each group
+3. task-to-event anchor matching against fixed calendar events
+
+Sequence means one task comes before another task.
+Anchor means one task or subtree must happen before a fixed event.
+Do not collapse those two ideas into one.
+
+When a calendar screenshot is provided:
+- read the screenshot first as the week's constraint map
+- infer fixed calendar events with day, start, end, and category when possible
+- look for a current-time indicator in the active day column
+- treat the current-time marker as a general calendar feature, not a Google-only feature
+- infer which fixed events are likely acting as real planning anchors or must-be-done-before deadlines
+- then connect the user's task text to those candidate anchors
+- infer which tasks are likely prep for those anchors, task by task, rather than assuming every task in a category belongs to the same event
+
+Use layout expectations as soft priors only. If a visually important detail is unclear, ask a targeted clarification question instead of guessing.
+
+Use this clarification order:
+- Phase 0: wording or transcription recovery
+- Phase 1: structural clarification
+- Phase 2: timing calibration
+
+Do not merge the phases together.
+
+Phase 0 is only for:
+- misheard or malformed words
+- names or places that do not parse
+- broken phrases where the intended meaning is unclear
+- screenshot terms or labels that do not parse cleanly
+
+Keep these questions minimal and do not count them against the later question cap.
+
+Phase 1 should be one structural round by default with at most 3 targeted questions.
+Use it only for things that materially improve the planner handoff:
+- hard deadlines with unclear dates or times
+- dependencies that affect ordering
+- required vs optional status
+- category mapping
+- screenshot-derived fixed events that are planning-critical but visually ambiguous
+- task-to-deadline or task-to-anchor links that materially affect scheduling
+
+Do not ask timing questions in Phase 1.
+
+Phase 2 should ask up to 3 timing questions about the estimates that are both:
+- most uncertain
+- most important for downstream scheduling quality
+
+After the user answers:
+- update the estimates
+- show the next 3 most uncertain estimates with your current best guesses
+- present them as a preview, not as automatic new questions
+- then stop by default
+
+Before final JSON, always show these sections in this order:
+1. a short weekly summary
+2. a category preview
+3. optional low-confidence anchor or ordering checks, only when needed
+4. a short confirmation prompt asking:
+   - whether the grouping and assumptions look right enough to finalize
+   - whether the user wants the final handoff in a copy-paste code box or as a file
+
+Do not print final JSON until the user has had a chance to approve the preview and assumptions.
+
+Use wording like:
+If the categories and assumptions look good, I can finalize now. Do you want the handoff in a code box you can copy-paste, or as a file?
+
+The category preview should:
+- list each project/category
+- include 2 to 3 representative tasks under each one when available
+- stay compact and easy to scan
+
+The optional anchor / ordering check should:
+- appear only when confidence is meaningfully low
+- include at most 3 items total
+- focus on task sequences or task-to-deadline links that materially affect scheduling
+- use short, concrete statements that name the uncertain sequence or anchor assumption directly
+
+Final JSON must use exactly these top-level keys:
+- projects
+- tasks
+- calendar_events
+- weekly_context
+
+For tasks, use these fields:
+- id
+- title
+- projectId
+- estimateMin
+- urgency
+- actionable
+- dependsOnIds
+
+Use additional task fields when relevant:
+- notes
+- optional
+- cadenceType
+- cadenceDays
+- anchorEventId
+
+Do not use name instead of title for tasks.
+
+Cadence rules:
+- default to cadenceType: "once"
+- use cadenceType: "multiple" for tasks that may happen more than once this week but do not have a fixed interval
+- use cadenceType: "routine" only when the user gives or clearly implies a specific interval such as every day or every 2 days
+- use cadenceDays only for true interval-based routine tasks
+
+For calendar_events, use these fields:
+- id
+- title
+- day
+- start
+- end
+- projectId
+- fixed
+
+Optional fields:
+- notes
+- confidence
+- actsAsDeadline
+- deadlineLabel
+
+Do not collapse calendar events into a single time field. Use:
+- day as full weekday name
+- start as HH:MM
+- end as HH:MM
+
+Use fixed: true for screenshot-derived or confirmed calendar constraints.
+Use actsAsDeadline: true only when the event likely functions as a real must-be-done-before anchor.
+
+For weekly_context, use only:
+- deadlines
+- currentTime
+- currentTimeConfidence
+- currentTimeSource
+- timezone
+- notes
+- preferences
+
+Do not add speculative advice or scheduling strategy there.
+
+The final JSON must be deterministic and planner-friendly:
+- use stable top-level keys exactly as defined
+- use arrays even when they contain one item
+- use null for important unresolved values
+- use [] for empty dependency or deadline lists
+- keep IDs lowercase and hyphenated
+
+If the user wants file output:
+- provide a file only if the environment actually supports creating or returning files
+- otherwise say that file output is not available here and return the handoff in a fenced json code block
+
+If the user does not care, default to a fenced json code block.
+
+After providing the final handoff, end with one short next-step line:
+Next step: open the planner here: ${LIVE_APP_URL}`;
+const CLAUDE_INTAKE_PROMPT = `You are a weekly planning intake assistant.
+
+Turn my messy weekly brain dump and, when provided, my calendar screenshot into a structured JSON handoff for this planner app: ${LIVE_APP_URL}
+
+Intake only:
+- do not assign tasks to timeslots
+- do not generate a weekly schedule
+
+Infer structure in this order:
+1. thematic grouping
+2. task-to-task sequence
+3. task-to-event anchor matching
+
+If a screenshot is present, read it first as the week's constraint map. Infer fixed calendar events, detect the current-time marker when possible, and identify likely anchor/deadline events before linking tasks to them.
+
+Use a minimal clarification flow:
+- Phase 0: wording recovery
+- Phase 1: structural clarification
+- Phase 2: timing calibration
+
+Before final JSON, always show:
+1. short weekly summary
+2. category preview
+3. optional low-confidence anchor or ordering checks
+4. ask whether I want the final handoff in a code box or as a file
+
+Do not print final JSON until I approve the preview.
+
+Final JSON must use exactly these top-level keys:
+- projects
+- tasks
+- calendar_events
+- weekly_context
+
+Use cadenceType of once, multiple, or routine. Use anchorEventId when a task clearly belongs before one specific fixed event.
+
+After finalizing, remind me:
+Next step: open the planner here: ${LIVE_APP_URL}`;
 
 const SAMPLE_BUNDLE = {
   projects: [
@@ -93,6 +348,7 @@ const SAMPLE_BUNDLE = {
   renameCategoryMode: false,
   deleteTaskMode: false,
   treeEditMode: false,
+  unlinkEditMode: false,
   treeParentTaskId: "",
   timeEditMode: false,
   deadlineEditMode: false,
@@ -139,6 +395,7 @@ function bindEvents() {
     document.getElementById("summary-view-tree").addEventListener("click", () => setSummaryView("tree"));
     document.getElementById("toggle-time-edit").addEventListener("click", toggleTimeEditMode);
     document.getElementById("toggle-tree-edit").addEventListener("click", toggleTreeEditMode);
+    document.getElementById("toggle-unlink-edit").addEventListener("click", toggleUnlinkEditMode);
     document.getElementById("toggle-deadline-edit").addEventListener("click", toggleDeadlineEditMode);
     document.getElementById("view-calendar").addEventListener("click", () => setBoardView("calendar"));
     document.getElementById("view-list").addEventListener("click", () => setBoardView("list"));
@@ -150,6 +407,8 @@ function bindEvents() {
   if (document.getElementById("copy-carryover")) document.getElementById("copy-carryover").addEventListener("click", () => copyText(els.carryoverOutput.value));
   document.getElementById("copy-vision-prompt").addEventListener("click", () => copyText(els.visionPrompt.value));
   document.getElementById("import-extraction").addEventListener("click", importExtractionEvents);
+  document.getElementById("copy-chatgpt-quick-prompt").addEventListener("click", () => copyText(CHATGPT_QUICK_INTAKE_PROMPT));
+  document.getElementById("copy-chatgpt-full-prompt").addEventListener("click", () => copyText(CHATGPT_FULL_INTAKE_PROMPT));
   document.getElementById("event-form").addEventListener("submit", addManualEvent);
   document.getElementById("new-category").addEventListener("click", createProjectViaPrompt);
   document.getElementById("new-task-category").addEventListener("click", createProjectViaPrompt);
@@ -190,7 +449,7 @@ function bindEvents() {
       bundleInput: "", extractionInput: "", projects: [], tasks: [], calendarEvents: [],
       weeklyContext: { deadlines: [], notes: "", preferences: null, currentTime: "", currentTimeConfidence: null, currentTimeSource: "", timezone: "" },
       screenshotDataUrl: "", settings: { dayStart: 8, dayEnd: 22, useSystemTime: true }, choices: {}, manualPlacements: [], completedTaskIds: [], hiddenFixedEventIds: [], plan: null,
-      importStatus: "", importStatusTone: "", showDetails: false, boardView: "calendar", importCollapsed: false, dragTaskId: "", dragSource: "", expandedProjectIds: [], userCreatedProjectIds: [], taskSummaryAtEnd: false, summaryView: "tree", addTaskMode: false, renameCategoryMode: false, deleteTaskMode: false, treeEditMode: false, treeParentTaskId: "", timeEditMode: false, deadlineEditMode: false, optionalEditMode: false, taskAnchorOverrides: {}
+      importStatus: "", importStatusTone: "", showDetails: false, boardView: "calendar", importCollapsed: false, dragTaskId: "", dragSource: "", expandedProjectIds: [], userCreatedProjectIds: [], taskSummaryAtEnd: false, summaryView: "tree", addTaskMode: false, renameCategoryMode: false, deleteTaskMode: false, treeEditMode: false, unlinkEditMode: false, treeParentTaskId: "", timeEditMode: false, deadlineEditMode: false, optionalEditMode: false, taskAnchorOverrides: {}
       , anchorCelebrationById: {}, recentCelebrations: []
     });
     sessionStorage.removeItem("weekly-planner-v2");
@@ -300,6 +559,7 @@ function setBoardView(view) {
       state.taskSummaryAtEnd = false;
         state.summaryView = "tree";
         state.treeEditMode = false;
+        state.unlinkEditMode = false;
         state.treeParentTaskId = "";
         state.timeEditMode = false;
         state.deadlineEditMode = false;
@@ -340,7 +600,7 @@ function normalizeBundle(parsed) {
   const projectIds = new Set(projects.map((project) => project.id));
   const tasks = parsed.tasks.map((task, index) => ({
     id: slugify(task.id || `task-${index + 1}`),
-    title: String(task.title || `Task ${index + 1}`).trim(),
+    title: String(task.title || task.name || `Task ${index + 1}`).trim(),
     projectId: projectIds.has(task.projectId) ? task.projectId : (projects[0]?.id || ""),
     estimateMin: normalizeEstimate(task.estimateMin),
     urgency: normalizeUrgency(task.urgency),
@@ -364,10 +624,11 @@ function normalizeBundle(parsed) {
 }
 
 function normalizeCalendarEvent(event, index, projectCollection = state.projects) {
-  const title = String(event.title || `Event ${index + 1}`).trim();
-  const day = DAYS.includes(event.day) ? event.day : inferDayFromDate(event.start);
-  const start = normalizeClock(event.start);
-  const end = normalizeClock(event.end);
+  const title = String(event.title || event.name || `Event ${index + 1}`).trim();
+  const timeParts = parseLooseCalendarTime(event.time);
+  const day = DAYS.includes(event.day) ? event.day : (timeParts.day || inferDayFromDate(event.start));
+  const start = normalizeClock(event.start || timeParts.start);
+  const end = normalizeClock(event.end || timeParts.end);
   if (!day || !start || !end || toMinutes(end) <= toMinutes(start)) return null;
   let projectId = event.projectId ? slugify(event.projectId) : "";
   if (projectId && !projectCollection.some((project) => project.id === projectId)) {
@@ -376,7 +637,57 @@ function normalizeCalendarEvent(event, index, projectCollection = state.projects
   if (!projectId && event.projectName) {
     projectId = ensureProjectInCollection(projectCollection, event.projectName);
   }
-  return { id: slugify(event.id || `event-${index + 1}`), title, day, start, end, projectId, fixed: event.fixed !== false, notes: String(event.notes || "").trim(), confidence: event.confidence ?? null };
+  const inferredTimeNote = !event.start && !event.end && event.time ? `Imported from compact time field: ${String(event.time).trim()}.` : "";
+  const notes = [String(event.notes || "").trim(), inferredTimeNote].filter(Boolean).join(" ");
+  return { id: slugify(event.id || `event-${index + 1}`), title, day, start, end, projectId, fixed: event.fixed !== false, notes, confidence: event.confidence ?? null };
+}
+
+function parseLooseCalendarTime(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return { day: "", start: "", end: "" };
+
+  const normalized = raw.replace(/[–—]/g, "-").replace(/\s+/g, " ");
+  const rangeMatch = normalized.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i);
+  if (rangeMatch) {
+    return {
+      day: capitalizeDay(rangeMatch[1]),
+      start: normalizeClock(rangeMatch[2]),
+      end: normalizeClock(rangeMatch[3])
+    };
+  }
+
+  const pointMatch = normalized.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(\d{1,2}:\d{2})$/i);
+  if (pointMatch) {
+    const start = normalizeClock(pointMatch[2]);
+    const end = start ? fromMinutes(Math.min(23 * 60 + 59, toMinutes(start) + 60)) : "";
+    return {
+      day: capitalizeDay(pointMatch[1]),
+      start,
+      end
+    };
+  }
+
+  const partOfDayMatch = normalized.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s+(morning|afternoon|evening)$/i);
+  if (partOfDayMatch) {
+    const part = partOfDayMatch[2].toLowerCase();
+    const defaults = {
+      morning: { start: "09:00", end: "11:00" },
+      afternoon: { start: "14:00", end: "16:00" },
+      evening: { start: "18:00", end: "20:00" }
+    };
+    return {
+      day: capitalizeDay(partOfDayMatch[1]),
+      start: defaults[part].start,
+      end: defaults[part].end
+    };
+  }
+
+  return { day: "", start: "", end: "" };
+}
+
+function capitalizeDay(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return DAYS.find((day) => day.toLowerCase() === normalized) || "";
 }
 
 function normalizeUrgency(value) {
@@ -1183,6 +1494,10 @@ function formatMinutesAsHours(totalMinutes) {
       handleTreeSelection(button.dataset.taskId);
       return;
     }
+    if (button.dataset.action === "unlink-select-task") {
+      handleUnlinkSelection(button.dataset.taskId);
+      return;
+    }
     if (button.dataset.action === "time-edit-task") {
       handleTimeEditSelection(button.dataset.taskId);
       return;
@@ -1490,6 +1805,7 @@ function renderBoardControls() {
       const optionalEditButton = document.getElementById("toggle-optional-edit");
     const timeEditButton = document.getElementById("toggle-time-edit");
     const treeEditButton = document.getElementById("toggle-tree-edit");
+    const unlinkEditButton = document.getElementById("toggle-unlink-edit");
     const deadlineEditButton = document.getElementById("toggle-deadline-edit");
     if (!section || !button) return;
     section.classList.toggle("summary-at-end", state.taskSummaryAtEnd);
@@ -1533,6 +1849,12 @@ function renderBoardControls() {
         treeEditButton.disabled = state.summaryView !== "tree";
         treeEditButton.hidden = state.summaryView !== "tree";
       }
+      if (unlinkEditButton) {
+        unlinkEditButton.className = `${state.unlinkEditMode ? "secondary" : "ghost"} small`;
+        unlinkEditButton.textContent = state.unlinkEditMode ? "⛓️‍💥 Choose Task" : "⛓️‍💥 Reset Link";
+        unlinkEditButton.disabled = state.summaryView !== "tree";
+        unlinkEditButton.hidden = state.summaryView !== "tree";
+      }
       if (deadlineEditButton) {
         deadlineEditButton.className = `${state.deadlineEditMode ? "secondary" : "ghost"} small`;
         deadlineEditButton.textContent = state.deadlineEditMode ? "⚓ Choose Task" : "⚓ Anchor to...";
@@ -1543,10 +1865,12 @@ function renderImportPriorityState() {
   const panel = document.getElementById("import-panel");
   const guide = document.getElementById("import-guide");
   const parseButton = document.getElementById("import-bundle");
+  const onboarding = document.getElementById("intake-onboarding");
   if (!panel || !guide || !parseButton) return;
 
   const shouldHighlight = !hasParsedPlannerData();
   panel.classList.toggle("import-priority", shouldHighlight);
+  if (onboarding) onboarding.hidden = !shouldHighlight;
   guide.innerHTML = shouldHighlight
     ? "<strong>Start here.</strong> Paste the planner bundle first. Once the bundle parses cleanly, this panel steps back and the board becomes the main surface."
     : "<strong>Bundle loaded.</strong> Reopen import anytime if you want to replace the week or adjust the planning horizon.";
@@ -1569,9 +1893,11 @@ function renderImportPriorityState() {
           : state.optionalEditMode
           ? "<strong>🌿 Change Optional.</strong> Click a task to toggle its optional status."
           : state.deadlineEditMode
-        ? "<strong>⚓ Anchor to...</strong> Click a task, then choose the fixed calendar event it must happen before."
+      ? "<strong>⚓ Anchor to...</strong> Click a task, then choose the fixed calendar event it must happen before."
         : state.treeEditMode && state.summaryView === "tree"
         ? `<strong>🔗 Link After...</strong> ${state.treeParentTaskId ? "Now click the earlier task it should come after." : "First click the task you want to move, then click the earlier task it should come after."}`
+        : state.unlinkEditMode && state.summaryView === "tree"
+        ? "<strong>⛓️‍💥 Reset Link.</strong> Click a task to remove its current in-category parent link."
         : state.taskSummaryAtEnd
         ? "<strong>Summary approved.</strong> You can still scroll back here to edit categories, add tasks, or mark things done."
         : "<strong>Step 1.</strong> First verify that these categories and tasks look right. You can drag tasks across categories, add tasks inside each category, create new categories, and click a task to mark it done or bring it back.";
@@ -1679,6 +2005,8 @@ function renderImportPriorityState() {
 function renderSummaryTaskItem(entry, manuallyPlacedIds, completedIds, taskWarningsById) {
     const action = state.treeEditMode && state.summaryView === "tree"
       ? "tree-select-task"
+      : state.unlinkEditMode && state.summaryView === "tree"
+      ? "unlink-select-task"
       : state.timeEditMode && state.summaryView === "list"
       ? "time-edit-task"
       : state.deadlineEditMode
@@ -1690,6 +2018,8 @@ function renderSummaryTaskItem(entry, manuallyPlacedIds, completedIds, taskWarni
       : "toggle-task-complete";
     const ariaLabel = state.treeEditMode && state.summaryView === "tree"
       ? "Choose task for Link After..."
+      : state.unlinkEditMode && state.summaryView === "tree"
+      ? "Choose task for Reset Link"
       : state.timeEditMode && state.summaryView === "list"
       ? "Choose task for Edit Time"
       : state.deadlineEditMode
@@ -1701,7 +2031,7 @@ function renderSummaryTaskItem(entry, manuallyPlacedIds, completedIds, taskWarni
       : completedIds.has(entry.task.id)
       ? "Mark task incomplete"
       : "Mark task complete";
-    return `<li class="summary-task ${manuallyPlacedIds.has(entry.task.id) ? "is-placed" : ""} ${completedIds.has(entry.task.id) ? "is-complete" : ""} ${taskWarningsById[entry.task.id] ? "has-warning" : ""} ${state.summaryView === "tree" ? "is-tree" : "is-list"} ${state.treeEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.treeParentTaskId === entry.task.id ? "is-tree-parent" : ""} ${state.timeEditMode && state.summaryView === "list" ? "is-time-editing" : ""} ${state.deadlineEditMode ? "is-deadline-editing" : ""} ${state.optionalEditMode ? "is-optional-editing" : ""} ${state.deleteTaskMode ? "is-delete-editing" : ""}" draggable="true" data-task-id="${escapeHtml(entry.task.id)}" data-drag-source="summary" data-depth="${state.summaryView === "tree" ? entry.depth : 0}" title="${escapeAttribute(taskWarningsById[entry.task.id]?.message || entry.task.title)}">${state.summaryView === "tree" && entry.treePrefix ? `<span class="summary-task-branch ${entry.hasParent ? "is-dependent" : "is-root"}" aria-hidden="true">${escapeHtml(entry.treePrefix)}</span>` : ""}<button type="button" class="summary-task-toggle" data-action="${action}" data-task-id="${escapeHtml(entry.task.id)}" aria-label="${ariaLabel}"><span class="summary-task-main"><span class="summary-task-label">${escapeHtml(entry.task.title)}</span></span></button>${state.summaryView === "list" && entry.task.estimateMin ? `<span class="estimate-pill">${entry.task.estimateMin}m</span>` : ""}${entry.task.optional ? `<span class="summary-optional-icon" title="Optional task" aria-label="Optional task">(🌿)</span>` : ""}${taskWarningsById[entry.task.id] ? `<span class="summary-warning-icon" title="${escapeAttribute(taskWarningsById[entry.task.id].message)}" aria-label="${escapeAttribute(taskWarningsById[entry.task.id].message)}">⚠️</span>` : ""}<span class="summary-status-icon" aria-hidden="true">${completedIds.has(entry.task.id) ? "✅" : manuallyPlacedIds.has(entry.task.id) ? "📌" : "💭"}</span></li>`;
+    return `<li class="summary-task ${manuallyPlacedIds.has(entry.task.id) ? "is-placed" : ""} ${completedIds.has(entry.task.id) ? "is-complete" : ""} ${taskWarningsById[entry.task.id] ? "has-warning" : ""} ${state.summaryView === "tree" ? "is-tree" : "is-list"} ${state.treeEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.unlinkEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.treeParentTaskId === entry.task.id ? "is-tree-parent" : ""} ${state.timeEditMode && state.summaryView === "list" ? "is-time-editing" : ""} ${state.deadlineEditMode ? "is-deadline-editing" : ""} ${state.optionalEditMode ? "is-optional-editing" : ""} ${state.deleteTaskMode ? "is-delete-editing" : ""}" draggable="true" data-task-id="${escapeHtml(entry.task.id)}" data-drag-source="summary" data-depth="${state.summaryView === "tree" ? entry.depth : 0}" title="${escapeAttribute(taskWarningsById[entry.task.id]?.message || entry.task.title)}">${state.summaryView === "tree" && entry.treePrefix ? `<span class="summary-task-branch ${entry.hasParent ? "is-dependent" : "is-root"}" aria-hidden="true">${escapeHtml(entry.treePrefix)}</span>` : ""}<button type="button" class="summary-task-toggle" data-action="${action}" data-task-id="${escapeHtml(entry.task.id)}" aria-label="${ariaLabel}"><span class="summary-task-main"><span class="summary-task-label">${escapeHtml(entry.task.title)}</span></span></button>${state.summaryView === "list" && entry.task.estimateMin ? `<span class="estimate-pill">${entry.task.estimateMin}m</span>` : ""}${entry.task.optional ? `<span class="summary-optional-icon" title="Optional task" aria-label="Optional task">(🌿)</span>` : ""}${taskWarningsById[entry.task.id] ? `<span class="summary-warning-icon" title="${escapeAttribute(taskWarningsById[entry.task.id].message)}" aria-label="${escapeAttribute(taskWarningsById[entry.task.id].message)}">⚠️</span>` : ""}<span class="summary-status-icon" aria-hidden="true">${completedIds.has(entry.task.id) ? "✅" : manuallyPlacedIds.has(entry.task.id) ? "📌" : "💭"}</span></li>`;
   }
 
 function renderSummaryAnchor(anchor, project, options = {}) {
@@ -1780,6 +2110,7 @@ function getCelebrationMessage(anchorId) {
     state.summaryView = view;
     if (view !== "tree") {
       state.treeEditMode = false;
+      state.unlinkEditMode = false;
       state.treeParentTaskId = "";
     }
     if (view !== "list") {
@@ -1788,6 +2119,7 @@ function getCelebrationMessage(anchorId) {
     state.addTaskMode = false;
     state.deadlineEditMode = false;
     state.renameCategoryMode = false;
+    state.unlinkEditMode = false;
     renderTaskSummary();
     renderTaskSummaryPlacement();
     renderTaskSummaryGuide();
@@ -1827,6 +2159,7 @@ function toggleAddTaskMode() {
     state.renameCategoryMode = false;
     state.deleteTaskMode = false;
     state.treeEditMode = false;
+  state.unlinkEditMode = false;
   state.treeParentTaskId = "";
   state.timeEditMode = false;
   state.deadlineEditMode = false;
@@ -1848,6 +2181,7 @@ function toggleRenameCategoryMode() {
     state.addTaskMode = false;
     state.deleteTaskMode = false;
     state.treeEditMode = false;
+  state.unlinkEditMode = false;
   state.treeParentTaskId = "";
   state.timeEditMode = false;
   state.deadlineEditMode = false;
@@ -1893,6 +2227,7 @@ function toggleDeleteTaskMode() {
     state.addTaskMode = false;
     state.renameCategoryMode = false;
     state.treeEditMode = false;
+    state.unlinkEditMode = false;
     state.treeParentTaskId = "";
     state.timeEditMode = false;
     state.deadlineEditMode = false;
@@ -1910,14 +2245,15 @@ function toggleDeleteTaskMode() {
     saveSession();
   }
 
-    function toggleTreeEditMode() {
-        if (state.summaryView !== "tree") {
-          setStatus("Switch Task Summary to Tree view to use 🔗 Link After...", "error");
-          return;
-        }
+  function toggleTreeEditMode() {
+      if (state.summaryView !== "tree") {
+        setStatus("Switch Task Summary to Tree view to use 🔗 Link After...", "error");
+        return;
+      }
         state.addTaskMode = false;
         state.renameCategoryMode = false;
         state.deleteTaskMode = false;
+        state.unlinkEditMode = false;
         state.timeEditMode = false;
         state.deadlineEditMode = false;
         state.optionalEditMode = false;
@@ -1929,6 +2265,32 @@ function toggleDeleteTaskMode() {
     saveSession();
   }
 
+  function toggleUnlinkEditMode() {
+      if (state.summaryView !== "tree") {
+        setStatus("Switch Task Summary to Tree view to use ⛓️‍💥 Reset Link.", "error");
+        return;
+      }
+      state.addTaskMode = false;
+      state.renameCategoryMode = false;
+      state.deleteTaskMode = false;
+      state.treeEditMode = false;
+      state.treeParentTaskId = "";
+      state.timeEditMode = false;
+      state.deadlineEditMode = false;
+      state.optionalEditMode = false;
+      state.unlinkEditMode = !state.unlinkEditMode;
+      setStatus(
+        state.unlinkEditMode
+          ? "⛓️‍💥 Reset Link is on. Click one task to remove its current in-category parent link."
+          : "⛓️‍💥 Reset Link is off.",
+        "ok"
+      );
+      renderTaskSummary();
+      renderTaskSummaryPlacement();
+      renderTaskSummaryGuide();
+      saveSession();
+  }
+
   function toggleTimeEditMode() {
       if (state.summaryView !== "list") {
         setStatus("Switch Task Summary to List view to edit task time.", "error");
@@ -1938,6 +2300,7 @@ function toggleDeleteTaskMode() {
       state.renameCategoryMode = false;
       state.deleteTaskMode = false;
       state.treeEditMode = false;
+    state.unlinkEditMode = false;
     state.treeParentTaskId = "";
     state.deadlineEditMode = false;
     state.optionalEditMode = false;
@@ -1953,6 +2316,7 @@ function toggleDeleteTaskMode() {
       state.renameCategoryMode = false;
       state.deleteTaskMode = false;
       state.treeEditMode = false;
+    state.unlinkEditMode = false;
     state.treeParentTaskId = "";
     state.timeEditMode = false;
     state.deadlineEditMode = false;
@@ -1974,6 +2338,7 @@ function toggleDeleteTaskMode() {
         state.renameCategoryMode = false;
         state.deleteTaskMode = false;
         state.treeEditMode = false;
+      state.unlinkEditMode = false;
       state.treeParentTaskId = "";
       state.timeEditMode = false;
       state.optionalEditMode = false;
@@ -2008,6 +2373,28 @@ function toggleDeleteTaskMode() {
       }
       assignTaskParent(state.treeParentTaskId, taskId);
     }
+
+  function handleUnlinkSelection(taskId) {
+    if (!state.unlinkEditMode || state.summaryView !== "tree" || !taskId) return;
+    const task = state.tasks.find((candidate) => candidate.id === taskId);
+    if (!task) return;
+    const projectTaskIds = new Set(
+      state.tasks
+        .filter((candidate) => candidate.projectId === task.projectId)
+        .map((candidate) => candidate.id)
+    );
+    const internalParentIds = task.dependsOnIds.filter((dependencyId) => projectTaskIds.has(dependencyId));
+    if (!internalParentIds.length) {
+      const message = `"${task.title}" does not currently have an in-category parent link to reset.`;
+      setStatus(message, "error");
+      if (state.importCollapsed) window.alert(message);
+      return;
+    }
+    task.dependsOnIds = task.dependsOnIds.filter((dependencyId) => !projectTaskIds.has(dependencyId));
+    state.unlinkEditMode = false;
+    setStatus(`Removed the current parent link for "${task.title}".`, "ok");
+    buildAndRenderPlan();
+  }
 
   function handleTimeEditSelection(taskId) {
     if (!state.timeEditMode || state.summaryView !== "list" || !taskId) return;
@@ -2849,7 +3236,7 @@ function setStatus(message, tone) {
 }
 
 function saveSession() {
-  const snapshot = { bundleInput: state.bundleInput, extractionInput: state.extractionInput, projects: state.projects, tasks: state.tasks, calendarEvents: state.calendarEvents, weeklyContext: state.weeklyContext, screenshotDataUrl: state.screenshotDataUrl, settings: state.settings, choices: state.choices, manualPlacements: state.manualPlacements, completedTaskIds: state.completedTaskIds, hiddenFixedEventIds: state.hiddenFixedEventIds, importStatus: state.importStatus, importStatusTone: state.importStatusTone, showDetails: state.showDetails, boardView: state.boardView, importCollapsed: state.importCollapsed, expandedProjectIds: state.expandedProjectIds, userCreatedProjectIds: state.userCreatedProjectIds, taskSummaryAtEnd: state.taskSummaryAtEnd, summaryView: state.summaryView, addTaskMode: state.addTaskMode, renameCategoryMode: state.renameCategoryMode, deleteTaskMode: state.deleteTaskMode, treeEditMode: state.treeEditMode, treeParentTaskId: state.treeParentTaskId, timeEditMode: state.timeEditMode, deadlineEditMode: state.deadlineEditMode, optionalEditMode: state.optionalEditMode, taskAnchorOverrides: state.taskAnchorOverrides, anchorCelebrationById: state.anchorCelebrationById, recentCelebrations: state.recentCelebrations };
+  const snapshot = { bundleInput: state.bundleInput, extractionInput: state.extractionInput, projects: state.projects, tasks: state.tasks, calendarEvents: state.calendarEvents, weeklyContext: state.weeklyContext, screenshotDataUrl: state.screenshotDataUrl, settings: state.settings, choices: state.choices, manualPlacements: state.manualPlacements, completedTaskIds: state.completedTaskIds, hiddenFixedEventIds: state.hiddenFixedEventIds, importStatus: state.importStatus, importStatusTone: state.importStatusTone, showDetails: state.showDetails, boardView: state.boardView, importCollapsed: state.importCollapsed, expandedProjectIds: state.expandedProjectIds, userCreatedProjectIds: state.userCreatedProjectIds, taskSummaryAtEnd: state.taskSummaryAtEnd, summaryView: state.summaryView, addTaskMode: state.addTaskMode, renameCategoryMode: state.renameCategoryMode, deleteTaskMode: state.deleteTaskMode, treeEditMode: state.treeEditMode, unlinkEditMode: state.unlinkEditMode, treeParentTaskId: state.treeParentTaskId, timeEditMode: state.timeEditMode, deadlineEditMode: state.deadlineEditMode, optionalEditMode: state.optionalEditMode, taskAnchorOverrides: state.taskAnchorOverrides, anchorCelebrationById: state.anchorCelebrationById, recentCelebrations: state.recentCelebrations };
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(snapshot));
 }
 
@@ -2876,6 +3263,7 @@ function saveSession() {
         state.taskSummaryAtEnd = state.taskSummaryAtEnd === true;
         state.summaryView = ["list", "tree"].includes(state.summaryView) ? state.summaryView : "tree";
         state.treeEditMode = state.treeEditMode === true;
+        state.unlinkEditMode = state.unlinkEditMode === true;
         state.treeParentTaskId = typeof state.treeParentTaskId === "string" ? state.treeParentTaskId : "";
         state.timeEditMode = state.timeEditMode === true;
         state.deadlineEditMode = state.deadlineEditMode === true;

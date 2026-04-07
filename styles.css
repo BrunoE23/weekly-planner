@@ -539,6 +539,41 @@ code {
   box-shadow: 0 10px 18px rgba(124, 55, 32, 0.18);
 }
 
+.intake-onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 18px;
+  border: 1px solid rgba(39, 99, 106, 0.18);
+  border-radius: 18px;
+  background: rgba(244, 249, 249, 0.88);
+}
+
+.intake-onboarding[hidden] {
+  display: none;
+}
+
+.intake-actions {
+  justify-content: flex-start;
+}
+
+.intake-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 0.92rem;
+}
+
+.intake-links a {
+  color: var(--secondary);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.intake-links a:hover {
+  text-decoration: underline;
+}
+
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
