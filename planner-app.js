@@ -1513,21 +1513,25 @@ function renderWarnings() {
       }
 
 function renderProjectListRollup(tasks, completedIds) {
-  const totalMinutes = tasks.reduce((sum, task) => sum + (Number.isFinite(task.estimateMin) ? task.estimateMin : 0), 0);
-  const doneMinutes = tasks.reduce((sum, task) => sum + (completedIds.has(task.id) && Number.isFinite(task.estimateMin) ? task.estimateMin : 0), 0);
-  const percent = totalMinutes > 0 ? Math.round((doneMinutes / totalMinutes) * 100) : 0;
-  return `<div class="summary-rollup">
-    <span class="summary-rollup-pill">Estimated ${escapeHtml(formatMinutesAsHours(totalMinutes))}</span>
-    <span class="summary-rollup-pill">${escapeHtml(`${doneMinutes}m / ${totalMinutes}m`)}</span>
-    <span class="summary-rollup-pill">${escapeHtml(`${percent}% done`)}</span>
-  </div>`;
-}
+    const totalMinutes = tasks.reduce((sum, task) => sum + (Number.isFinite(task.estimateMin) ? task.estimateMin : 0), 0);
+    const doneMinutes = tasks.reduce((sum, task) => sum + (completedIds.has(task.id) && Number.isFinite(task.estimateMin) ? task.estimateMin : 0), 0);
+    const percent = totalMinutes > 0 ? Math.round((doneMinutes / totalMinutes) * 100) : 0;
+    return `<div class="summary-rollup">
+      <span class="summary-rollup-pill">Estimated ${escapeHtml(formatMinutesAsHours(totalMinutes))}</span>
+      <span class="summary-rollup-pill">${escapeHtml(`${formatMinutesAsHours(doneMinutes)} / ${formatMinutesAsHours(totalMinutes)}`)}</span>
+      <span class="summary-rollup-pill">${escapeHtml(`${percent}% done`)}</span>
+    </div>`;
+  }
 
 function formatMinutesAsHours(totalMinutes) {
-  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return "0h";
-  const hours = totalMinutes / 60;
-  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
-}
+    if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return "0h";
+    const roundedMinutes = Math.round(totalMinutes);
+    const hours = Math.floor(roundedMinutes / 60);
+    const minutes = roundedMinutes % 60;
+    if (!hours) return `${minutes}m`;
+    if (!minutes) return `${hours}h`;
+    return `${hours}h ${minutes}m`;
+  }
 
   function onTaskSummaryClick(event) {
       const button = event.target.closest("button[data-action]");
@@ -1909,17 +1913,13 @@ function renderBoardControls() {
 
 function renderImportPriorityState() {
   const panel = document.getElementById("import-panel");
-  const guide = document.getElementById("import-guide");
   const parseButton = document.getElementById("import-bundle");
   const onboarding = document.getElementById("intake-onboarding");
-  if (!panel || !guide || !parseButton) return;
+  if (!panel || !parseButton) return;
 
   const shouldHighlight = !hasParsedPlannerData();
   panel.classList.toggle("import-priority", shouldHighlight);
   if (onboarding) onboarding.hidden = !shouldHighlight;
-  guide.innerHTML = shouldHighlight
-    ? "<strong>Start here.</strong> Paste the planner bundle first. Once the bundle parses cleanly, this panel steps back and the board becomes the main surface."
-    : "<strong>Bundle loaded.</strong> Reopen import anytime if you want to replace the week or adjust the planning horizon.";
   parseButton.classList.toggle("primary", shouldHighlight);
   parseButton.classList.toggle("secondary", !shouldHighlight);
 }
@@ -2077,7 +2077,7 @@ function renderSummaryTaskItem(entry, manuallyPlacedIds, completedIds, taskWarni
       : completedIds.has(entry.task.id)
       ? "Mark task incomplete"
       : "Mark task complete";
-    return `<li class="summary-task ${manuallyPlacedIds.has(entry.task.id) ? "is-placed" : ""} ${completedIds.has(entry.task.id) ? "is-complete" : ""} ${taskWarningsById[entry.task.id] ? "has-warning" : ""} ${state.summaryView === "tree" ? "is-tree" : "is-list"} ${state.treeEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.unlinkEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.treeParentTaskId === entry.task.id ? "is-tree-parent" : ""} ${state.timeEditMode && state.summaryView === "list" ? "is-time-editing" : ""} ${state.deadlineEditMode ? "is-deadline-editing" : ""} ${state.optionalEditMode ? "is-optional-editing" : ""} ${state.deleteTaskMode ? "is-delete-editing" : ""}" draggable="true" data-task-id="${escapeHtml(entry.task.id)}" data-drag-source="summary" data-depth="${state.summaryView === "tree" ? entry.depth : 0}" title="${escapeAttribute(taskWarningsById[entry.task.id]?.message || entry.task.title)}">${state.summaryView === "tree" && entry.treePrefix ? `<span class="summary-task-branch ${entry.hasParent ? "is-dependent" : "is-root"}" aria-hidden="true">${escapeHtml(entry.treePrefix)}</span>` : ""}<button type="button" class="summary-task-toggle" data-action="${action}" data-task-id="${escapeHtml(entry.task.id)}" aria-label="${ariaLabel}"><span class="summary-task-main"><span class="summary-task-label">${escapeHtml(entry.task.title)}</span></span></button>${state.summaryView === "list" && entry.task.estimateMin ? `<span class="estimate-pill">${entry.task.estimateMin}m</span>` : ""}${entry.task.optional ? `<span class="summary-optional-icon" title="Optional task" aria-label="Optional task">(🌿)</span>` : ""}${taskWarningsById[entry.task.id] ? `<span class="summary-warning-icon" title="${escapeAttribute(taskWarningsById[entry.task.id].message)}" aria-label="${escapeAttribute(taskWarningsById[entry.task.id].message)}">⚠️</span>` : ""}<span class="summary-status-icon" aria-hidden="true">${completedIds.has(entry.task.id) ? "✅" : manuallyPlacedIds.has(entry.task.id) ? "📌" : "💭"}</span></li>`;
+    return `<li class="summary-task ${manuallyPlacedIds.has(entry.task.id) ? "is-placed" : ""} ${completedIds.has(entry.task.id) ? "is-complete" : ""} ${taskWarningsById[entry.task.id] ? "has-warning" : ""} ${state.summaryView === "tree" ? "is-tree" : "is-list"} ${state.treeEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.unlinkEditMode && state.summaryView === "tree" ? "is-tree-editing" : ""} ${state.treeParentTaskId === entry.task.id ? "is-tree-parent" : ""} ${state.timeEditMode && state.summaryView === "list" ? "is-time-editing" : ""} ${state.deadlineEditMode ? "is-deadline-editing" : ""} ${state.optionalEditMode ? "is-optional-editing" : ""} ${state.deleteTaskMode ? "is-delete-editing" : ""}" draggable="true" data-task-id="${escapeHtml(entry.task.id)}" data-drag-source="summary" data-depth="${state.summaryView === "tree" ? entry.depth : 0}" title="${escapeAttribute(taskWarningsById[entry.task.id]?.message || entry.task.title)}">${state.summaryView === "tree" && entry.treePrefix ? `<span class="summary-task-branch ${entry.hasParent ? "is-dependent" : "is-root"}" aria-hidden="true">${escapeHtml(entry.treePrefix)}</span>` : ""}<button type="button" class="summary-task-toggle" data-action="${action}" data-task-id="${escapeHtml(entry.task.id)}" aria-label="${ariaLabel}"><span class="summary-task-main"><span class="summary-task-label">${escapeHtml(entry.task.title)}</span>${state.summaryView === "list" && entry.task.estimateMin ? `<span class="summary-task-meta-row"><span class="estimate-pill">${escapeHtml(formatMinutesAsHours(entry.task.estimateMin))}</span></span>` : ""}</span></button>${entry.task.optional ? `<span class="summary-optional-icon" title="Optional task" aria-label="Optional task">(🌿)</span>` : ""}${taskWarningsById[entry.task.id] ? `<span class="summary-warning-icon" title="${escapeAttribute(taskWarningsById[entry.task.id].message)}" aria-label="${escapeAttribute(taskWarningsById[entry.task.id].message)}">⚠️</span>` : ""}<span class="summary-status-icon" aria-hidden="true">${completedIds.has(entry.task.id) ? "✅" : manuallyPlacedIds.has(entry.task.id) ? "📌" : "💭"}</span></li>`;
   }
 
 function renderSummaryAnchor(anchor, project, options = {}) {
