@@ -386,6 +386,7 @@ function bindEvents() {
   document.getElementById("close-details").addEventListener("click", () => toggleDetails(false));
     document.getElementById("toggle-import-panel-top").addEventListener("click", toggleImportPanel);
     document.getElementById("confirm-task-summary").addEventListener("click", confirmTaskSummary);
+    document.getElementById("return-task-summary-top").addEventListener("click", returnTaskSummaryToTop);
     document.getElementById("new-summary-category").addEventListener("click", createSummaryCategory);
     document.getElementById("add-summary-task-global").addEventListener("click", toggleAddTaskMode);
     document.getElementById("rename-summary-category-global").addEventListener("click", toggleRenameCategoryMode);
@@ -472,6 +473,12 @@ function toggleImportPanel() {
 
 function confirmTaskSummary() {
   state.taskSummaryAtEnd = true;
+  renderTaskSummaryPlacement();
+  saveSession();
+}
+
+function returnTaskSummaryToTop() {
+  state.taskSummaryAtEnd = false;
   renderTaskSummaryPlacement();
   saveSession();
 }
@@ -1178,7 +1185,44 @@ function buildAnchorTargets(fixedEvents) {
     notes: event.notes || "",
     kind: "event"
   }));
+  getManualDayAnchorTargets().forEach((target) => {
+    if (!targets.some((candidate) => candidate.id === target.id)) targets.push(target);
+  });
   return targets.sort((left, right) => compareDayTime(left.day, left.start, right.day, right.start));
+}
+
+function getManualDayAnchorTargets() {
+  const overrideIds = Object.values(state.taskAnchorOverrides || {});
+  const manualIds = [...new Set(overrideIds.filter((value) => /^day-anchor-/.test(String(value || ""))))];
+  return manualIds
+    .map((anchorId) => createManualDayAnchor(anchorId.replace(/^day-anchor-/, "")))
+    .filter(Boolean);
+}
+
+function createManualDayAnchor(daySlug) {
+  const day = DAYS.find((candidate) => slugify(candidate) === slugify(daySlug));
+  if (!day) return null;
+  return {
+    id: `day-anchor-${slugify(day)}`,
+    title: `${day} (end of day)`,
+    day,
+    start: fromMinutes(state.settings.dayEnd * 60),
+    projectId: "",
+    notes: "Manual end-of-day deadline",
+    kind: "deadline"
+  };
+}
+
+function getDeadlineChoiceOptions(fixedEvents) {
+  const eventChoices = fixedEvents.map((event) => ({
+    id: event.id,
+    title: event.title,
+    day: event.day,
+    start: event.start,
+    kind: "event"
+  }));
+  const dayChoices = DAYS.map((day) => createManualDayAnchor(slugify(day))).filter(Boolean);
+  return [...eventChoices, ...dayChoices];
 }
 
 function scoreTaskAgainstAnchor(task, anchorTarget) {
@@ -1223,8 +1267,7 @@ function buildProjectAnchorDiagnostics(fixedEvents, assignedSegments, unschedule
       project.id,
       state.tasks.filter((task) =>
         task.projectId === project.id &&
-        task.actionable !== false &&
-        getTaskCadenceType(task) === "once"
+        task.actionable !== false
       )
     ])
   );
@@ -1234,106 +1277,105 @@ function buildProjectAnchorDiagnostics(fixedEvents, assignedSegments, unschedule
   });
 
   anchorTargets.forEach((target) => {
-    let bestProjectId = "";
-    let bestMatches = [];
-    let bestTotal = 0;
     const forcedProjects = new Map();
+    const projectEntries = [];
 
     state.projects.forEach((project) => {
       const forcedTasks = (projectTasksById.get(project.id) || []).filter((task) => taskAnchorOverrides[task.id] === target.id);
       if (forcedTasks.length) forcedProjects.set(project.id, forcedTasks);
     });
 
-    if (forcedProjects.size) {
-      forcedProjects.forEach((forcedTasks, projectId) => {
-        const otherMatches = (projectTasksById.get(projectId) || [])
-          .filter((task) => !forcedTasks.some((forcedTask) => forcedTask.id === task.id))
-          .map((task) => ({ task, score: scoreTaskAgainstAnchor(task, target) }))
-          .filter(({ score }) => score >= 4)
-          .sort((left, right) => right.score - left.score || left.task.title.localeCompare(right.task.title));
-        const forcedMatches = forcedTasks.map((task) => ({ task, score: 99 }));
-        const combinedMatches = [...forcedMatches, ...otherMatches];
-        const totalScore = combinedMatches.reduce((sum, match) => sum + match.score, 0) + 10;
-        if (totalScore > bestTotal) {
-          bestTotal = totalScore;
-          bestProjectId = projectId;
-          bestMatches = combinedMatches;
-        }
-      });
-    }
-
     state.projects.forEach((project) => {
-      if (forcedProjects.size) return;
-      const matches = (projectTasksById.get(project.id) || [])
+      const forcedTasks = forcedProjects.get(project.id) || [];
+      const forcedTaskIds = new Set(forcedTasks.map((task) => task.id));
+      const inferredMatches = (projectTasksById.get(project.id) || [])
+        .filter((task) => !forcedTaskIds.has(task.id))
         .map((task) => ({ task, score: scoreTaskAgainstAnchor(task, target) }))
         .filter(({ score }) => score >= 4)
         .sort((left, right) => right.score - left.score || left.task.title.localeCompare(right.task.title));
+      const forcedMatches = forcedTasks.map((task) => ({ task, score: 99 }));
+      const matches = [...forcedMatches, ...inferredMatches];
 
       if (!matches.length) return;
 
-      const totalScore = matches.reduce((sum, match) => sum + match.score, 0) + (matches.length > 1 ? 2 : 0);
-      if (totalScore > bestTotal) {
-        bestTotal = totalScore;
-        bestProjectId = project.id;
-        bestMatches = matches;
-      }
+      const totalScore = matches.reduce((sum, match) => sum + match.score, 0)
+        + (matches.length > 1 ? 2 : 0)
+        + (forcedMatches.length ? 10 : 0);
+      const threshold = forcedMatches.length ? 1 : 7;
+      if (totalScore < threshold) return;
+
+      projectEntries.push({
+        projectId: project.id,
+        project,
+        matches,
+        totalScore
+      });
     });
 
-    if (!bestProjectId || bestTotal < 7) return;
+    if (!projectEntries.length) return;
 
-    const project = state.projects.find((entry) => entry.id === bestProjectId);
-    const anchorEntry = {
-      id: target.id,
-      title: target.title,
-      day: target.day,
-      start: target.start,
-      kind: target.kind,
-      projectId: target.projectId || bestProjectId,
-      linkedTaskIds: bestMatches.map((match) => match.task.id),
-      warningCount: 0,
-      message: ""
-    };
+    let totalEventWarnings = 0;
+    const warningProjectNames = [];
 
-    bestMatches.forEach(({ task }) => {
-      const taskSegments = assignedSegments
-        .filter((segment) => segment.task.id === task.id)
-        .sort((left, right) => compareDayTime(left.day, left.start, right.day, right.start));
+    projectEntries.forEach(({ projectId, project, matches }) => {
+      const anchorEntry = {
+        id: target.id,
+        title: target.title,
+        day: target.day,
+        start: target.start,
+        kind: target.kind,
+        projectId: target.projectId || projectId,
+        linkedTaskIds: matches.map((match) => match.task.id),
+        warningCount: 0,
+        message: ""
+      };
 
-      let warning = null;
-      if (taskSegments.length) {
-        const firstSegment = taskSegments[0];
-        const taskEndsAfterAnchor = compareDayTime(firstSegment.day, firstSegment.end, target.day, target.start) > 0;
-        if (taskEndsAfterAnchor) {
-          warning = {
-            type: "anchor-late",
-            anchorId: target.id,
-            message: `"${task.title}" is placed after ${target.title}.`
-          };
+      matches.forEach(({ task }) => {
+        const taskSegments = assignedSegments
+          .filter((segment) => segment.task.id === task.id)
+          .sort((left, right) => compareDayTime(left.day, left.start, right.day, right.start));
+
+        let warning = null;
+        if (taskSegments.length) {
+          const firstSegment = taskSegments[0];
+          const taskEndsAfterAnchor = compareDayTime(firstSegment.day, firstSegment.end, target.day, target.start) > 0;
+          if (taskEndsAfterAnchor) {
+            warning = {
+              type: "anchor-late",
+              anchorId: target.id,
+              message: `"${task.title}" is placed after ${target.title}.`
+            };
+          }
         }
+
+        if (warning) {
+          taskWarningsById[task.id] = warning;
+          anchorEntry.warningCount += 1;
+        }
+      });
+
+      const message = anchorEntry.warningCount
+        ? `${anchorEntry.warningCount} task${anchorEntry.warningCount === 1 ? "" : "s"} in ${project?.name || "this category"} should happen before ${target.title}.`
+        : "";
+      if (message) {
+        messages.push(message);
+        totalEventWarnings += anchorEntry.warningCount;
+        warningProjectNames.push(project?.name || "this category");
       }
 
-      if (warning) {
-        taskWarningsById[task.id] = warning;
-        anchorEntry.warningCount += 1;
-      }
+      projectAnchors[projectId].push({
+        ...anchorEntry,
+        hasWarnings: anchorEntry.warningCount > 0,
+        message
+      });
     });
 
-    const message = anchorEntry.warningCount
-      ? `${anchorEntry.warningCount} task${anchorEntry.warningCount === 1 ? "" : "s"} in ${project?.name || "this category"} should happen before ${target.title}.`
-      : "";
-    if (message) {
-      messages.push(message);
+    if (totalEventWarnings) {
       eventWarningsById[target.id] = {
-        count: anchorEntry.warningCount,
-        message
+        count: totalEventWarnings,
+        message: `${target.title} has late linked tasks in ${warningProjectNames.join(", ")}.`
       };
     }
-
-    projectAnchors[bestProjectId].push({
-      ...anchorEntry,
-      hasWarnings: anchorEntry.warningCount > 0,
-      message
-    });
   });
 
   state.projects.forEach((project) => {
@@ -1796,6 +1838,7 @@ function renderBoardControls() {
   function renderTaskSummaryPlacement() {
     const section = document.getElementById("task-summary").closest(".summary-shell");
     const button = document.getElementById("confirm-task-summary");
+    const returnButton = document.getElementById("return-task-summary-top");
     const approvedPill = document.getElementById("task-summary-approved-pill");
     const listButton = document.getElementById("summary-view-list");
     const treeButton = document.getElementById("summary-view-tree");
@@ -1812,6 +1855,9 @@ function renderBoardControls() {
     button.textContent = state.taskSummaryAtEnd ? "Summary Approved" : "This Looks Good";
     button.disabled = state.taskSummaryAtEnd;
     button.hidden = state.taskSummaryAtEnd;
+    if (returnButton) {
+      returnButton.hidden = !state.taskSummaryAtEnd;
+    }
     if (approvedPill) {
       approvedPill.hidden = !state.taskSummaryAtEnd;
     }
@@ -2412,25 +2458,22 @@ function toggleDeleteTaskMode() {
     if (!state.deadlineEditMode || !taskId) return;
     const task = state.tasks.find((candidate) => candidate.id === taskId);
     if (!task) return;
-    if (task.optional) {
-      const message = `"${task.title}" is optional, so it cannot be anchored to a deadline.`;
-      setStatus(message, "error");
-      if (state.importCollapsed) window.alert(message);
-      return;
-    }
     const fixedEvents = [...(state.plan?.fixedEvents || [])].sort((left, right) => compareDayTime(left.day, left.start, right.day, right.start));
-    if (!fixedEvents.length) {
-      const message = "There are no fixed calendar events available to use as deadlines yet.";
+    const deadlineChoices = getDeadlineChoiceOptions(fixedEvents);
+    if (!deadlineChoices.length) {
+      const message = "There are no calendar anchors available yet.";
       setStatus(message, "error");
       if (state.importCollapsed) window.alert(message);
       return;
     }
-    const options = fixedEvents.map((event, index) => `${index + 1}. ${event.title} (${event.day} ${prettyTime(event.start)})`).join("\n");
+    const eventCount = fixedEvents.length;
+    const eventOptions = fixedEvents.map((event, index) => `${index + 1}. ${event.title} (${event.day} ${prettyTime(event.start)})`).join("\n");
+    const dayOptions = DAYS.map((day, index) => `${eventCount + index + 1}. ${day} (end of day)`).join("\n");
     const currentAnchorId = state.taskAnchorOverrides?.[taskId] || "";
-    const currentEvent = currentAnchorId ? fixedEvents.find((event) => event.id === currentAnchorId) : null;
+    const currentEvent = currentAnchorId ? deadlineChoices.find((event) => event.id === currentAnchorId) : null;
     const response = window.prompt(
-      `Choose a calendar deadline for "${task.title}".\n\n${options}\n\nEnter a number, or type 0 to clear the deadline link.${currentEvent ? `\nCurrent: ${currentEvent.title} (${currentEvent.day} ${prettyTime(currentEvent.start)})` : ""}`,
-      currentEvent ? String(fixedEvents.findIndex((event) => event.id === currentEvent.id) + 1) : ""
+      `Choose a deadline anchor for "${task.title}".\n\nCalendar events:\n${eventOptions || "None"}\n\nEnd of day:\n${dayOptions}\n\nEnter a number, or type 0 to clear the deadline link.${currentEvent ? `\nCurrent: ${currentEvent.title} (${currentEvent.day} ${prettyTime(currentEvent.start)})` : ""}`,
+      currentEvent ? String(deadlineChoices.findIndex((event) => event.id === currentEvent.id) + 1) : ""
     );
     if (response === null) return;
     const choice = Number.parseInt(String(response).trim(), 10);
@@ -2447,7 +2490,7 @@ function toggleDeleteTaskMode() {
       buildAndRenderPlan();
       return;
     }
-    const selectedEvent = fixedEvents[choice - 1];
+    const selectedEvent = deadlineChoices[choice - 1];
     if (!selectedEvent) {
       const message = "That deadline choice is out of range.";
       setStatus(message, "error");
@@ -2497,7 +2540,7 @@ function toggleDeleteTaskMode() {
     if (!taskId) return null;
     const explicitAnchorId = state.taskAnchorOverrides?.[taskId];
     if (explicitAnchorId) {
-      const explicitEvent = (state.plan?.fixedEvents || []).find((event) => event.id === explicitAnchorId)
+      const explicitEvent = buildAnchorTargets(state.plan?.fixedEvents || []).find((event) => event.id === explicitAnchorId)
         || state.calendarEvents.find((event) => event.id === explicitAnchorId);
       return explicitEvent ? { ...explicitEvent, source: "explicit" } : { id: explicitAnchorId, source: "explicit" };
     }
@@ -2519,9 +2562,6 @@ function toggleDeleteTaskMode() {
 
   function getOptionalToggleError(task, nextOptional) {
     if (nextOptional) {
-      if (isTaskLinkedToDeadline(task.id)) {
-        return `"${task.title}" is linked to a deadline, so it cannot be optional.`;
-      }
       const blockingDescendant = getDescendantTaskIds(task.id)
         .map((descendantId) => state.tasks.find((candidate) => candidate.id === descendantId))
         .find((descendant) => descendant && !descendant.optional);
