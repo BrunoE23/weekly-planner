@@ -1,0 +1,8 @@
+.codex/
+.edge-profile/
+PROFILE.md
+app.js
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log

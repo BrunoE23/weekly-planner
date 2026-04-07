@@ -1,0 +1,4 @@
+interface:
+  display_name: "Weekly Planning Intake"
+  short_description: "Turn messy planning notes into planner JSON"
+  default_prompt: "Use $weekly-planning-intake to turn my messy weekly brain dump into a concise summary and planner-ready JSON."

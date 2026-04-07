@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Weekly Planner Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div>
+          <p class="eyebrow">Weekly Planner Dashboard</p>
+          <h1>Build the week from the next free window forward.</h1>
+          <p class="hero-copy">
+            Paste the combined intake bundle, sanity-check the categories, and
+            then schedule chronologically after the current-time marker.
+          </p>
+        </div>
+          <div class="hero-actions">
+            <button id="load-sample" class="secondary">Load Sample Bundle</button>
+            <button id="toggle-import-panel-top" class="ghost">Hide Import</button>
+            <button id="toggle-details" class="ghost">Open Review &amp; Edit</button>
+            <button id="clear-session" class="ghost">Clear Session</button>
+          </div>
+        </header>
+
+      <section class="stats-strip" id="stats-strip"></section>
+
+      <main id="workspace" class="workspace board-first">
+        <section id="import-panel" class="panel stack import-panel">
+          <div class="section-head">
+              <div>
+                <p id="import-eyebrow" class="eyebrow">Import</p>
+                <h2>Planner Bundle</h2>
+              </div>
+            </div>
+          <div id="import-guide" class="summary-guide import-guide">
+            <strong>Start here.</strong> Paste the planner bundle first. Once the bundle parses cleanly, this panel steps back and the board becomes the main surface.
+          </div>
+          <div class="section-head tight">
+            <h3>Scheduling Horizon</h3>
+          </div>
+            <div class="settings-grid horizon-grid">
+              <label>
+                <span>Day starts</span>
+                <input id="day-start" type="number" min="0" max="23" value="8" />
+              </label>
+            <label>
+              <span>Day ends</span>
+              <input id="day-end" type="number" min="1" max="24" value="22" />
+            </label>
+              <label>
+                <span>Current time</span>
+                <input id="current-time" type="datetime-local" />
+              </label>
+            </div>
+            <label class="toggle-row">
+              <input id="use-system-time" type="checkbox" />
+              <span>Use system time (rounded down to the hour)</span>
+            </label>
+            <p class="muted small-copy">
+              Use the imported current-time marker when you want the screenshot to
+              drive the horizon, or switch to system time for a live local start.
+            </p>
+
+          <div class="divider"></div>
+
+          <div class="section-head tight">
+            <h3>Planner Bundle</h3>
+            <div class="chip-row">
+              <button id="import-bundle" class="primary small">Parse Bundle</button>
+            </div>
+          </div>
+          <p class="muted">
+            Paste the JSON output from <code>weekly-planning-intake</code> or upload a <code>.json</code> file.
+          </p>
+          <label>
+            <span class="field-label">Upload JSON File</span>
+            <input id="bundle-file-input" type="file" accept=".json,application/json" />
+          </label>
+          <textarea
+            id="bundle-input"
+            class="code-input"
+            spellcheck="false"
+            placeholder='Paste JSON with "projects", "tasks", "calendar_events", and "weekly_context" here.'
+          ></textarea>
+          <div id="import-status" class="status"></div>
+        </section>
+
+        <section class="panel planner-panel">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Board</p>
+              <h2>Weekly Scheduling Flow</h2>
+            </div>
+              <div class="chip-row">
+                <button id="view-calendar" class="ghost small">Calendar View</button>
+                <button id="view-list" class="ghost small">List View</button>
+                <button id="restore-fixed-events" class="ghost small is-hidden">Restore Hidden Calendar Items</button>
+                <button id="clear-choices" class="ghost small">Clear Choices</button>
+              </div>
+          </div>
+
+          <div id="warnings" class="warning-list"></div>
+
+            <section class="summary-shell summary-step-shell">
+              <div class="section-head tight">
+                  <div class="summary-title-stack">
+                    <p class="eyebrow">Step 1</p>
+                    <div class="summary-title-row">
+                      <h3>Task Summary</h3>
+                      <span id="task-summary-approved-pill" class="summary-approved-pill" hidden>Summary Approved</span>
+                    </div>
+                  </div>
+                  <div class="chip-row summary-step-actions">
+                  <div class="summary-view-toggle" role="group" aria-label="Task summary view">
+                    <button id="summary-view-list" class="ghost small">List</button>
+                    <button id="summary-view-tree" class="secondary small">Tree</button>
+                  </div>
+                  <button id="add-summary-task-global" class="ghost small">➕ Add Task</button>
+                  <button id="delete-summary-task-global" class="ghost small">❌ Delete Task</button>
+                  <button id="toggle-optional-edit" class="ghost small">🌿 Change Optional</button>
+                  <button id="toggle-time-edit" class="ghost small">Edit Time</button>
+                  <button id="toggle-tree-edit" class="ghost small">🔗 Link After...</button>
+                  <button id="toggle-deadline-edit" class="ghost small">⚓ Anchor to...</button>
+                  <button id="rename-summary-category-global" class="ghost small">✏️ Rename Category</button>
+                  <button id="new-summary-category" class="ghost small step-secondary">New Category</button>
+                  </div>
+                </div>
+              <div id="task-summary-guide" class="summary-guide"></div>
+              <div id="task-summary" class="summary-grid"></div>
+              <div class="summary-confirm-row">
+                <button id="confirm-task-summary" class="secondary step-primary step-approve">This Looks Good</button>
+              </div>
+              <div id="task-summary-legend" class="summary-legend">
+                <span class="summary-legend-pill">Legend: 💭 not scheduled yet · 📌 scheduled · ✅ done · (🌿) optional</span>
+              </div>
+            </section>
+
+          <section class="summary-shell">
+            <div class="section-head tight">
+              <h3>Current Focus</h3>
+              <div class="chip-row">
+                <button id="restart-focus" class="ghost small">Back To First Open Window</button>
+              </div>
+            </div>
+            <div id="focus-window" class="focus-window"></div>
+          </section>
+
+          <section class="summary-shell">
+            <div class="section-head tight">
+              <h3>Weekly Board</h3>
+            </div>
+            <div id="planner-board" class="planner-board empty">
+              <p>Import a bundle to see fixed events, available windows, and the next scheduling decision.</p>
+            </div>
+          </section>
+
+          <section id="carryover-section" class="summary-shell is-hidden">
+            <div class="section-head tight">
+              <h3>Carryover For Next Week</h3>
+            </div>
+            <div id="carryover-summary" class="carryover-summary"></div>
+            <textarea id="carryover-output" class="code-input compact" readonly></textarea>
+            <button id="copy-carryover" class="secondary small">Copy Carryover JSON</button>
+          </section>
+
+          <section id="details-panel" class="details-panel is-hidden">
+            <div class="divider"></div>
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">Optional</p>
+                <h2>Review &amp; Edit</h2>
+              </div>
+              <button id="close-details" class="ghost small">Hide</button>
+            </div>
+            <p class="muted">
+              Use this when the imported bundle needs correction. The default
+              experience stays on the board.
+            </p>
+
+            <div class="section-head tight">
+              <h3>Calendar Reference</h3>
+            </div>
+            <input id="screenshot-input" type="file" accept="image/*" />
+            <div id="screenshot-preview" class="screenshot-preview empty">
+              <p>No screenshot uploaded yet.</p>
+            </div>
+
+            <label class="field-label" for="vision-prompt">Vision Helper Prompt</label>
+            <textarea id="vision-prompt" class="helper-text" readonly></textarea>
+            <button id="copy-vision-prompt" class="secondary small">Copy Prompt</button>
+
+            <label class="field-label" for="extraction-input">Pasted Event Extraction JSON</label>
+            <textarea
+              id="extraction-input"
+              class="code-input compact"
+              spellcheck="false"
+              placeholder='Paste an array like [{"title":"Accepted Students Day","day":"Thursday","start":"17:00","end":"19:00","projectName":"Accepted Students Day"}]'
+            ></textarea>
+            <button id="import-extraction" class="secondary">Import Extracted Events</button>
+
+            <div class="divider"></div>
+
+            <div class="section-head tight">
+              <h3>Add Fixed Event</h3>
+              <button id="new-category" class="ghost small">New Category</button>
+            </div>
+            <form id="event-form" class="event-form">
+              <label>
+                <span>Title</span>
+                <input id="event-title" type="text" required />
+              </label>
+              <label>
+                <span>Day</span>
+                <select id="event-day"></select>
+              </label>
+              <label>
+                <span>Start</span>
+                <input id="event-start" type="time" required />
+              </label>
+              <label>
+                <span>End</span>
+                <input id="event-end" type="time" required />
+              </label>
+              <label class="span-two">
+                <span>Category</span>
+                <select id="event-project"></select>
+              </label>
+              <button class="primary span-two" type="submit">Add Event</button>
+            </form>
+
+            <div class="section-head tight">
+              <h3>Fixed Events</h3>
+            </div>
+            <div id="events-editor" class="stack compact"></div>
+
+            <div class="section-head tight">
+              <h3>Task Review</h3>
+              <button id="new-task-category" class="ghost small">New Category</button>
+            </div>
+            <div id="tasks-editor" class="task-groups"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="./planner-app.js"></script>
+  </body>
+</html>
