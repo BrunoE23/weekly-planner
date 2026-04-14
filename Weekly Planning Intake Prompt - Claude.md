@@ -45,6 +45,16 @@ Keep sequence logic separate from anchor logic:
 
 When anchor-matching, prefer attaching the anchor to the relevant subtree rather than automatically to the whole category.
 
+When the user describes a larger task that is naturally divisible into homogeneous chunks, prefer turning it into a short sequential chain rather than a set of parallel sibling tasks. Example:
+- `review 8 papers` can become `review papers - block 1`, `block 2`, `block 3`, `block 4`
+
+If you split work this way:
+- keep the chunks in one project
+- default to linking them in order with dependencies
+- do not emit them as independent parallel tasks unless the user clearly says the order does not matter
+
+This helps the downstream planner surface only the first unfinished chunk as the next clear step instead of showing several nearly identical blocks at once.
+
 ### Screenshot handling
 
 When a calendar screenshot is present:

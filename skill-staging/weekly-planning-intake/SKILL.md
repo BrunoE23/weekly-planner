@@ -55,6 +55,17 @@ Do not collapse sequence logic and anchor logic into the same step. They are rel
 
 When anchor-matching, prefer attaching the anchor to the relevant subtree rather than automatically to the whole category.
 
+When the user describes a larger task that is naturally divisible into homogeneous chunks, prefer turning it into a short sequential chain rather than a set of parallel sibling tasks. Examples:
+- `review 8 papers` can become `review papers - block 1`, `block 2`, `block 3`, `block 4`
+- `grade 30 exams` can become a few grading blocks
+
+If you split work this way:
+- keep the chunks in one project
+- default to linking them in order with dependencies
+- do not emit them as independent parallel tasks unless the user clearly says the order does not matter
+
+This matters because the downstream planner works better when only the first unfinished chunk is surfaced as the next obvious step, rather than several identical chunks competing at once.
+
 Prefer practical task titles such as `draft presentation outline` over broad labels such as `work on presentation`.
 
 Do not invent speculative tasks, deadlines, or dependencies. If a task can be made more actionable without guessing, do so. Otherwise keep it broader and flag uncertainty in `notes` or with null values.
